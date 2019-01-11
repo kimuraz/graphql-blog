@@ -1,39 +1,39 @@
 const {GraphQLServer} = require('graphql-yoga');
-
-let postId = 1;
-const posts = [];
-
+const {Prisma} = require('prisma-binding');
 
 const resolvers = {
   Query: {
-    description: () => 'Blog API',
-    posts: () => posts,
-    post: (parent, args) => posts.find(p => p.id === args.id),
+    posts: (parent, args, ctx, info) => {
+      return ctx.db.query.posts({}, info);
+    },
+    post: (parent, args, ctx, info) => {
+      return ctx.db.query.post({where: {id: args.id}}, info);
+    },
   },
   Mutation: {
-    createDraft: (parent, args) => {
-      const post = {
-        id: `post_${postId}`,
-        title: args.title,
-        content: args.content,
-        published: false,
-      };
-      postId += 1;
-
-      posts.push(post);
-      return post;
+    createDraft: (parent, args, ctx, info) => {
+      const {title, content} = args;
+      return ctx.db.mutation.createPost(
+        {
+          data: {
+            title,
+            content,
+          },
+        },
+        info,
+      );
     },
-    deletePost: (parent, args) => {
-      const idx = posts.findIndex(p => p.id === args.id);
-      if (idx > -1) {
-        posts.splice(idx, 1);
-      }
-      return null;
+    deletePost: (parent, {id}, ctx, info) => {
+      return ctx.db.mutation.deletePost({where: {id}}, info);
     },
-    publish: (parent, args) => {
-      const idx = posts.findIndex(p => p.id === args.id);
-      posts[idx].published = true;
-      return posts[idx];
+    publish: (parent, {id}, ctx, info) => {
+      return ctx.db.mutation.updatePost(
+        {
+          where: {id},
+          data: {published: true},
+        },
+        info,
+      );
     },
   },
 };
@@ -41,6 +41,14 @@ const resolvers = {
 const server = new GraphQLServer({
   typeDefs: './src/schema.graphql',
   resolvers,
+  context: req => ({
+    ...req,
+    db: new Prisma({
+      typeDefs: 'src/generated/prisma.graphql',
+      endpoint: 'http://localhost:4466',
+      debug: true,
+    }),
+  }),
 });
 
 server.start(() => console.log('Blog server running on http://localhost:4000'));
